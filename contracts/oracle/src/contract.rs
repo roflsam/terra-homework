@@ -1,12 +1,13 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
+    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, attr
 };
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, PriceResponse};
+use crate::state::{State, STATE};
 
 
 // version info for migration info
@@ -17,37 +18,84 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
-    _info: MessageInfo,
-    _msg: InstantiateMsg,
+    info: MessageInfo,
+    msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    // instantiate with price
+    let state = State {
+        price: msg.price,
+        owner: info.sender.clone(),
+    };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    STATE.save(deps.storage, &state)?;
 
-    // TODO: instantiate contract
-    Ok(Response::new())
+    Ok(Response::new()
+    .add_attribute("method", "instantiate")
+    .add_attribute("owner", info.sender)
+    .add_attribute("price", msg.price.to_string()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    _deps: DepsMut,
+    deps: DepsMut,
     _env: Env,
-    _info: MessageInfo,
-    _msg: ExecuteMsg,
+    info: MessageInfo,
+    msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
+    match msg {
+        ExecuteMsg::UpdatePrice { price} => try_update_price(deps, info, price),
+    }
     //TODO: execute try_update_price
-    Ok(Response::new())
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn try_update_price(
+    deps: DepsMut,
+    info: MessageInfo,
+    price: u64,
+) -> Result<Response, ContractError> {
+    let mut state: State  = STATE.load(deps.storage)?;
+
+    //priv check
+    if state.owner != info.sender {
+        return Err(ContractError::Unauthorized{});
+    }
+
+    //valid price check
+    if price <= 0u64{
+        return Err(ContractError::PriceInstantiationError{});
+    }
+
+    state.price = price;
+
+    STATE.save(deps.storage, &state)?;
+
+    let res = Response::new()
+        .add_attributes(vec![attr("action", "update_price")]);
+
+    Ok(res)
+}
+
+
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(_deps: Deps, _env: Env, _msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     // TODO
-    Err(StdError::generic_err("not implemented"))
+    match msg {
+        QueryMsg::QueryPrice {} => to_binary(&query_price(deps)?),
+    }
+
+}
+
+fn query_price(deps: Deps) -> StdResult<PriceResponse> {
+    let state = STATE.load(deps.storage)?;
+    Ok(PriceResponse { price: state.price })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins};
+    use cosmwasm_std::{coins, from_binary};
 
     #[test]
     fn proper_initialization() {
@@ -61,9 +109,9 @@ mod tests {
         assert_eq!(0, res.messages.len());
 
         // it worked, let's query the state
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::QueryPrice {});
-        assert_eq!(res, Err(StdError::generic_err("not implemented")));
-        //assert_eq!(17, value.price);
+        let res : PriceResponse = from_binary(&query(deps.as_ref(), mock_env(), QueryMsg::QueryPrice {}).unwrap()).unwrap();
+        //assert_eq!(res, Err(StdError::generic_err("not implemented")));
+        assert_eq!(17, res.price);
     }
 
     #[test]

@@ -43,9 +43,9 @@ def deploy_local_wasm(file_path, wallet, terra):
   with open(file_path, "rb") as fp:
     file_bytes = base64.b64encode(fp.read()).decode()
     store_code_msg = MsgStoreCode(wallet.key.acc_address, file_bytes)
-    store_code_tx = wallet.create_and_sign_tx(CreateTxOptions(msgs=[store_code_msg], fee=Fee(6900000, "1000000uluna")))
+    store_code_tx = wallet.create_and_sign_tx(CreateTxOptions(msgs=[store_code_msg], fee=Fee(6900000, "100000uluna")))
     store_code_result = terra.tx.broadcast(store_code_tx)
-
+    # print(store_code_result)
   #persist code_id
   deployed_code_id = store_code_result.logs[0].events_by_type["store_code"]["code_id"][0]
 
@@ -84,7 +84,9 @@ def execute_msg(address, msg, wallet, terra, coins=None):
 
   return tx_result
 
-
+#####################
+# Part 1
+#####################
 
 # deploy
 deploy_local_wasm('artifacts/cw20_token.wasm', wallet, terra)
@@ -120,6 +122,22 @@ execute_msg('terra1l40arwn0lehwuay48pzxxu9h8x298twk3s7a4f', msg, wallet, terra)
 # now check balance
 terra.wasm.contract_query(lemon_address, {'balance':{'address': friend_wallet.key.acc_address}})
 
+#####################
+# Part 2
+#####################
+# deploy
+deploy_local_wasm('artifacts/oracle.wasm', wallet, terra)
+# set price
+message = {"price":5}
+price_result = init_contract(67566, message, wallet, terra)
+# get SC address
+price_address = price_result.logs[0].events_by_type["instantiate_contract"]["contract_address"][0]
+# query price
+terra.wasm.contract_query(price_address, {"query_price": {}})
+# now update price and then query to check
+msg = {"update_price" : {"price" : 7}}
+execute_msg(price_address, msg, wallet, terra)
+terra.wasm.contract_query(price_address, {"query_price": {}})
 
 # Notes
 var_result.to_data().keys()
