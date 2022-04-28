@@ -6,7 +6,8 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, PriceResponse};
+use crate::msg::{ExecuteMsg, InstantiateMsg, PriceResponse};
+use shared::oracle::QueryMsg;
 use crate::state::{State, STATE};
 
 
